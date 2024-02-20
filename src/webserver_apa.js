@@ -24,7 +24,7 @@ const server = http.createServer((req, res) => {
 // Attach socket.io to the server
 const io = socketIO(server, {
 	cors: {
-		origin: "http://localhost:8080",
+		origin: "http://localhost:1337",
 		methods: ["GET", "POST"],
 		transports: ['websocket', 'polling'],
 		credentials: true
@@ -32,7 +32,11 @@ const io = socketIO(server, {
 	allowEIO3: true
 });
 
-server.listen(8080); // Server listens on port 8080
+
+console.log('Runs on 1337');
+console.log('https://www.lcd-module.de/eng/pdf/zubehoer/APA102C.pdf');
+console.log('http://192.168.188.25:1337/')
+server.listen(1337); // Server listens on port 1337
 
 // Function to send data to APA102 LED strip
 function sendDataToLED(colorIndex) {
