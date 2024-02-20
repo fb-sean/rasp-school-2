@@ -1,216 +1,94 @@
-// derived from:
-// https://www.w3schools.com/nodejs/nodejs_raspberrypi_webserver_websocket.asp
+// Import required modules
+const http = require('http');
+const socketIO = require('socket.io');
+const fs = require('fs');
+const { Gpio } = require('onoff');
 
-// require http-server, and create server with function handler
-var http = require('http').createServer(httpHandler);
-// require socket.io module and pass the http object (server)
-var io = require('socket.io')(http, {
+// GPIO setup
+const APAClock = new Gpio(17, 'out');
+const APAData = new Gpio(27, 'out');
+
+// Create an HTTP server
+const server = http.createServer((req, res) => {
+	fs.readFile(__dirname + '/apa.html', (err, data) => {
+		if (err) {
+			res.writeHead(404, { 'Content-Type': 'text/html' });
+			return res.end("404 Not Found");
+		}
+		res.writeHead(200, { 'Content-Type': 'text/html' });
+		res.write(data);
+		return res.end();
+	});
+});
+
+// Attach socket.io to the server
+const io = socketIO(server, {
 	cors: {
 		origin: "http://localhost:8080",
 		methods: ["GET", "POST"],
 		transports: ['websocket', 'polling'],
 		credentials: true
-	}, allowEIO3: true
-})
+	},
+	allowEIO3: true
+});
 
-var fs = require('fs');						// require filesystem module
-var Gpio = require('onoff').Gpio;	// include onoff to interact with the GPIO
+server.listen(8080); // Server listens on port 8080
 
-var APAClock = new Gpio(17, 'out');
-var APAData = new Gpio(27, 'out');
+// Function to send data to APA102 LED strip
+function sendDataToLED(colorIndex) {
+	// Start Frame
+	for (let i = 0; i < 32; i++) {
+		sendBit(0);
+	}
 
-http.listen(8080); // listen to port 8080
+	// LED Frame
+	for (let j = 0; j < 3; j++) {
+		sendBit(1, 3); // 3 initial bits
+		sendBit(1, 5); // 5 brightness bits
 
-// define http-handler
-function httpHandler(req, res) {
-	// req: request from client to server
-	// res: response from server to client
-	fs.readFile(__dirname + '/apa.html', function(err, data) {
-		// read file index.html
-		if (err) {
-			// respond with 404 on error
-			res.writeHead(404, {'Content-Type': 'text/html'});
-			return res.end("404 Not Found");
-		}
+		// Send colors
+		sendColor(colorIndex === 0, 8); // Blue
+		sendColor(colorIndex === 1, 8); // Green
+		sendColor(colorIndex === 2, 8); // Red
+	}
 
-		// respond with contents of index.html-file
-		res.writeHead(200, {'Content-Type': 'text/html'});
-		res.write(data);
-		return res.end();
-	});
+	// End Frame
+	for (let i = 0; i < 32; i++) {
+		sendBit(1);
+	}
 }
 
-var pressed = false;
+// Function to send a single bit to the LED strip
+function sendBit(bit, count = 1) {
+	for (let i = 0; i < count; i++) {
+		APAClock.writeSync(1);
+		APAData.writeSync(bit);
+		APAClock.writeSync(0);
+	}
+}
 
-// define web-socket-connection-handler
-io.sockets.on('connection', function (socket) {
-	// define lightState-message-handler to receive light-checkbox-state from client
-	socket.on('idLightCheckbox', function(data) {
+// Function to send color data
+function sendColor(isColorOn, bits) {
+	for (let i = 0; i < bits; i++) {
+		sendBit(isColorOn ? 1 : 0);
+	}
+}
 
-		if (pressed) return;
+let colorIndex = 0; // Current color index
 
-		pressed = true;
-
+// Socket connection handler
+io.on('connection', (socket) => {
+	socket.on('idLightCheckbox', (data) => {
 		console.log(data);
-
-		var color = 0;
-
-		for (var k = 0; k < 256 * 1; k++)
-		{
-			// write start frame 0 bits
-			for (var i = 0; i < 32; i++)
-			{
-				APAClock.writeSync(1);
-				APAData.writeSync(0);
-				APAClock.writeSync(0);
-			}
-
-			for (var j = 0; j < 3; j++)
-			{
-				// write 3 initial bits
-				for (var i = 0; i < 3; i++)
-				{
-					APAClock.writeSync(1);
-					APAData.writeSync(1);
-					APAClock.writeSync(0);
-				}
-
-				// write 5 brightness bits
-				for (var i = 0; i < 5; i++)
-				{
-					APAClock.writeSync(1);
-					APAData.writeSync(1);
-					APAClock.writeSync(0);
-				}
-
-				// write BLUE
-				for (var i = 0; i < 8; i++)
-				{
-					APAClock.writeSync(1);
-
-					if (color == 0)
-						APAData.writeSync(1);
-					else
-						APAData.writeSync(0);
-
-					APAClock.writeSync(0);
-				}
-
-				// write GREEN
-				for (var i = 0; i < 8; i++)
-				{
-					APAClock.writeSync(1);
-
-					if (color == 1)
-						APAData.writeSync(1);
-					else
-						APAData.writeSync(0);
-
-					APAClock.writeSync(0);
-				}
-
-				// write RED
-				for (var i = 0; i < 8; i++)
-				{
-					APAClock.writeSync(1);
-
-					if (color == 2)
-						APAData.writeSync(1);
-					else
-						APAData.writeSync(0);
-
-					APAClock.writeSync(0);
-				}
-
-				setTimeout(() => {}, 1000);
-			}
-
-			// write end frame 1 bits
-			for (var i = 0; i < 32; i++)
-			{
-				APAClock.writeSync(1);
-				APAData.writeSync(1);
-				APAClock.writeSync(0);
-			}
-
-			color++;
-
-			if (color == 3) color = 0;
-		}
-
-		console.log("done");
-
-		// on rising edge:
-		// send bit on data
-		// set rising edge on clock (send 1)
-
-		// then after timeout send clock (send 0)
+		sendDataToLED(colorIndex);
+		colorIndex = (colorIndex + 1) % 3; // Cycle through colors
 	});
 });
 
-// define handler for ctrl+c signal (exit program)
-process.on('SIGINT', function () {
-	// write start frame 0 bits
-	for (var i = 0; i < 32; i++)
-	{
-		APAClock.writeSync(1);
-		APAData.writeSync(0);
-		APAClock.writeSync(0);
-	}
-
-	for (var j = 0; j < 3; j++)
-	{
-		// write 3 initial bits
-		for (var i = 0; i < 3; i++)
-		{
-			APAClock.writeSync(1);
-			APAData.writeSync(1);
-			APAClock.writeSync(0);
-		}
-
-		// write 5 brightness bits
-		for (var i = 0; i < 5; i++)
-		{
-			APAClock.writeSync(1);
-			APAData.writeSync(0);
-			APAClock.writeSync(0);
-		}
-
-		// write BLUE
-		for (var i = 0; i < 8; i++)
-		{
-			APAClock.writeSync(1);
-			APAData.writeSync(0);
-			APAClock.writeSync(0);
-		}
-
-		// write GREEN
-		for (var i = 0; i < 8; i++)
-		{
-			APAClock.writeSync(1);
-			APAData.writeSync(0);
-			APAClock.writeSync(0);
-		}
-
-		// write RED
-		for (var i = 0; i < 8; i++)
-		{
-			APAClock.writeSync(1);
-			APAData.writeSync(0);
-			APAClock.writeSync(0);
-		}
-	}
-
-	// write end frame 1 bits
-	for (var i = 0; i < 32; i++)
-	{
-		APAClock.writeSync(1);
-		APAData.writeSync(1);
-		APAClock.writeSync(0);
-	}
-
+// Cleanup on exit
+process.on('SIGINT', () => {
+	sendDataToLED(-1); // Turn off LEDs
 	APAClock.unexport();
 	APAData.unexport();
-
-	process.exit();		// exit program
+	process.exit();
 });
