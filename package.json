@@ -1,0 +1,15 @@
+{
+  "name": "rasp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/webserver.js",
+  "scripts": {
+    "start": "node src/webserver.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "socket.io": "^4.7.2"
+  }
+}
